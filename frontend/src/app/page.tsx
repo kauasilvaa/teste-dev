@@ -1,5 +1,6 @@
 "use client";
 
+
 import { useEffect, useState } from "react";
 
 type Cliente = {
@@ -26,7 +27,7 @@ type Agendamento = {
   }[];
 };
 
-const API_URL = "http://localhost:3333";
+const API_URL = "http://127.0.0.1:3333";
 
 export default function Home() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -41,26 +42,31 @@ export default function Home() {
   const [servicoId, setServicoId] = useState("");
   const [data, setData] = useState("");
 
-  async function carregarDados() {
-    const [clientesRes, servicosRes, agendamentosRes] = await Promise.all([
-      fetch(`${API_URL}/clientes`),
-      fetch(`${API_URL}/servicos`),
-      fetch(`${API_URL}/agendamentos`),
-    ]);
+  const [dataInicio, setDataInicio] = useState("");
+  const [dataFim, setDataFim] = useState("");
 
-    setClientes(await clientesRes.json());
-    setServicos(await servicosRes.json());
-    setAgendamentos(await agendamentosRes.json());
-  }
+  const [dashboard, setDashboard] = useState<any>(null);
+
+  async function carregarDados() {
+  const [clientesRes, servicosRes, agendamentosRes, dashboardRes] = await Promise.all([
+    fetch(`${API_URL}/clientes`),
+    fetch(`${API_URL}/servicos`),
+    fetch(`${API_URL}/agendamentos`),
+    fetch(`${API_URL}/dashboard`),
+  ]);
+
+  setClientes(await clientesRes.json());
+  setServicos(await servicosRes.json());
+  setAgendamentos(await agendamentosRes.json());
+  setDashboard(await dashboardRes.json());
+}
 
   async function criarCliente(e: React.FormEvent) {
     e.preventDefault();
 
     await fetch(`${API_URL}/clientes`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ nome, email, telefone }),
     });
 
@@ -71,33 +77,89 @@ export default function Home() {
   }
 
   async function criarAgendamento(e: React.FormEvent) {
-    e.preventDefault();
+  e.preventDefault();
 
-    await fetch(`${API_URL}/agendamentos`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        clienteId,
-        servicoIds: [servicoId],
-        data: new Date(data).toISOString(),
-      }),
-    });
+  const resposta = await fetch(`${API_URL}/agendamentos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      clienteId,
+      servicoIds: [servicoId],
+      data: new Date(data).toISOString(),
+    }),
+  });
 
-    setClienteId("");
-    setServicoId("");
-    setData("");
-    carregarDados();
+  const resultado = await resposta.json();
+
+  if (!resposta.ok) {
+    alert(resultado.message || "Não foi possível criar o agendamento");
+    return;
   }
 
+  if (resultado.sugestao) {
+    alert(
+      `${resultado.sugestao.message}\nData sugerida: ${new Date(
+        resultado.sugestao.dataSugerida
+      ).toLocaleString("pt-BR")}`
+    );
+  } else {
+    alert("Agendamento criado com sucesso");
+  }
+
+  setClienteId("");
+  setServicoId("");
+  setData("");
+  carregarDados();
+}
   async function cancelarAgendamento(id: string) {
-    await fetch(`${API_URL}/agendamentos/${id}/cancelar`, {
+    const resposta = await fetch(`${API_URL}/agendamentos/${id}/cancelar`, {
       method: "PATCH",
     });
 
+    const resultado = await resposta.json();
+
+    if (!resposta.ok) {
+      alert(resultado.message || "Não foi possível cancelar o agendamento");
+      return;
+    }
+
+    alert("Agendamento cancelado com sucesso");
     carregarDados();
   }
+
+  async function filtrarAgendamentos() {
+    if (!dataInicio || !dataFim) {
+      alert("Informe a data inicial e a data final");
+      return;
+    }
+
+    const resposta = await fetch(
+      `${API_URL}/agendamentos/filtro?dataInicio=${dataInicio}&dataFim=${dataFim}`
+    );
+
+    const resultado = await resposta.json();
+    setAgendamentos(resultado);
+  }
+
+ async function confirmarAgendamento(id: string) {
+  console.log("ID enviado:", id);
+
+  const resposta = await fetch(`${API_URL}/agendamentos/${id}/confirmar`, {
+    method: "PATCH",
+  });
+
+  console.log("Status:", resposta.status);
+
+  const resultado = await resposta.json();
+  console.log("Resposta:", resultado);
+
+  if (!resposta.ok) {
+    alert(resultado.message || "Erro");
+    return;
+  }
+
+  carregarDados();
+}
 
   useEffect(() => {
     carregarDados();
@@ -105,16 +167,40 @@ export default function Home() {
 
   return (
     <main className="page">
-      <header className="hero">
-        <div>
-          <span className="tag">Sistema de agendamentos</span>
-          <h1>Leila Salão de Beleza</h1>
-          <p>
-            Controle de clientes, serviços e agendamentos com regras de
-            alteração e cancelamento.
-          </p>
-        </div>
-      </header>
+<header className="hero">
+  <div>
+    <span className="tag">Sistema de agendamentos</span>
+    <h1>Leila Salão de Beleza</h1>
+    <p>
+      Controle de clientes, serviços e agendamentos com regras de alteração,
+      cancelamento e histórico por período.
+    </p>
+  </div>
+
+  {dashboard && (
+    <div className="dashboard">
+      <div>
+        <strong>{dashboard.total}</strong>
+        <span>Total</span>
+      </div>
+
+      <div>
+        <strong>{dashboard.confirmados}</strong>
+        <span>Confirmados</span>
+      </div>
+
+      <div>
+        <strong>{dashboard.pendentes}</strong>
+        <span>Pendentes</span>
+      </div>
+
+      <div>
+        <strong>{dashboard.cancelados}</strong>
+        <span>Cancelados</span>
+      </div>
+    </div>
+  )}
+</header>
 
       <section className="grid">
         <div className="card">
@@ -130,6 +216,7 @@ export default function Home() {
 
             <input
               placeholder="Email"
+              type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -190,8 +277,37 @@ export default function Home() {
 
       <section className="card full">
         <div className="section-title">
-          <h2>Agendamentos</h2>
+          <div>
+            <h2>Agendamentos</h2>
+            <p>Consulte, visualize detalhes e cancele agendamentos.</p>
+          </div>
           <span>{agendamentos.length} registros</span>
+        </div>
+
+        <div className="form" style={{ marginBottom: 20 }}>
+          <div className="grid">
+            <input
+              type="date"
+              value={dataInicio}
+              onChange={(e) => setDataInicio(e.target.value)}
+            />
+
+            <input
+              type="date"
+              value={dataFim}
+              onChange={(e) => setDataFim(e.target.value)}
+            />
+          </div>
+
+          <div style={{ display: "flex", gap: 12 }}>
+            <button type="button" onClick={filtrarAgendamentos}>
+              Filtrar por período
+            </button>
+
+            <button type="button" onClick={carregarDados}>
+              Limpar filtro
+            </button>
+          </div>
         </div>
 
         <div className="table">
@@ -200,6 +316,11 @@ export default function Home() {
               <div>
                 <strong>{agendamento.cliente.nome}</strong>
                 <p>
+                  Cliente: {agendamento.cliente.email} |{" "}
+                  {agendamento.cliente.telefone}
+                </p>
+                <p>
+                  Serviços:{" "}
                   {agendamento.servicos
                     .map((item) => item.servico.nome)
                     .join(", ")}
@@ -207,19 +328,32 @@ export default function Home() {
               </div>
 
               <div>
-                {new Date(agendamento.data).toLocaleString("pt-BR")}
+                <strong>Data e horário</strong>
+                <p>{new Date(agendamento.data).toLocaleString("pt-BR")}</p>
               </div>
 
               <span className={`status ${agendamento.status.toLowerCase()}`}>
                 {agendamento.status}
               </span>
 
-              <button
-                className="danger"
-                onClick={() => cancelarAgendamento(agendamento.id)}
-              >
-                Cancelar
-              </button>
+                            <div style={{ display: "flex", gap: 8 }}>
+                            <button
+  type="button"
+  onClick={() => confirmarAgendamento(agendamento.id)}
+  disabled={agendamento.status !== "PENDENTE"}
+>
+  Confirmar
+</button>
+
+  <button
+    className="danger"
+    type="button"
+    onClick={() => cancelarAgendamento(agendamento.id)}
+    disabled={agendamento.status === "CANCELADO"}
+  >
+    {agendamento.status === "CANCELADO" ? "Cancelado" : "Cancelar"}
+  </button>
+</div>
             </div>
           ))}
         </div>

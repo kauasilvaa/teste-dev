@@ -9,6 +9,7 @@ const app = Fastify({
 
 app.register(cors, {
   origin: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
 });
 
 function faltamMenosDeDoisDias(data: Date) {
@@ -17,6 +18,20 @@ function faltamMenosDeDoisDias(data: Date) {
   const diferencaEmDias = diferencaEmMs / (1000 * 60 * 60 * 24);
 
   return diferencaEmDias < 2;
+}
+
+function obterIntervaloSemana(data: Date) {
+  const inicio = new Date(data);
+  const diaSemana = inicio.getDay();
+
+  inicio.setDate(inicio.getDate() - diaSemana);
+  inicio.setHours(0, 0, 0, 0);
+
+  const fim = new Date(inicio);
+  fim.setDate(inicio.getDate() + 6);
+  fim.setHours(23, 59, 59, 999);
+
+  return { inicio, fim };
 }
 
 // Health check
@@ -34,6 +49,22 @@ app.post("/clientes", async (request, reply) => {
     email: string;
     telefone: string;
   };
+
+  if (!nome || !email || !telefone) {
+    return reply.status(400).send({
+      message: "Nome, email e telefone são obrigatórios",
+    });
+  }
+
+  const clienteExistente = await prisma.cliente.findUnique({
+    where: { email },
+  });
+
+  if (clienteExistente) {
+    return reply.status(400).send({
+      message: "Já existe um cliente cadastrado com este email",
+    });
+  }
 
   const cliente = await prisma.cliente.create({
     data: {
@@ -93,6 +124,12 @@ app.post("/servicos", async (request, reply) => {
     duracao: number;
   };
 
+  if (!nome || preco <= 0 || duracao <= 0) {
+    return reply.status(400).send({
+      message: "Nome, preço e duração válidos são obrigatórios",
+    });
+  }
+
   const servico = await prisma.servico.create({
     data: {
       nome,
@@ -115,16 +152,77 @@ app.get("/servicos", async () => {
 
 // Criar agendamento
 app.post("/agendamentos", async (request, reply) => {
-  const { clienteId, servicoIds, data } = request.body as {
+  const { clienteId, data, servicoIds } = request.body as {
     clienteId: string;
-    servicoIds: string[];
     data: string;
+    servicoIds: string[];
   };
+
+  if (!clienteId || !data || !servicoIds || servicoIds.length === 0) {
+    return reply.status(400).send({
+      message: "Cliente, data e ao menos um serviço são obrigatórios",
+    });
+  }
+
+  const dataAgendamento = new Date(data);
+
+  if (Number.isNaN(dataAgendamento.getTime())) {
+    return reply.status(400).send({
+      message: "Data inválida",
+    });
+  }
+
+  const cliente = await prisma.cliente.findUnique({
+    where: { id: clienteId },
+  });
+
+  if (!cliente) {
+    return reply.status(404).send({
+      message: "Cliente não encontrado",
+    });
+  }
+
+  const conflito = await prisma.agendamento.findFirst({
+    where: {
+      data: dataAgendamento,
+      status: {
+        not: "CANCELADO",
+      },
+    },
+  });
+
+  if (conflito) {
+    return reply.status(400).send({
+      message: "Já existe um agendamento nesse horário",
+    });
+  }
+
+  const inicioSugestao = new Date(dataAgendamento);
+  inicioSugestao.setDate(inicioSugestao.getDate() - 7);
+
+    const fimSugestao = new Date(dataAgendamento);
+    fimSugestao.setDate(fimSugestao.getDate() + 7);
+
+        const agendamentoNaMesmaSemana = await prisma.agendamento.findFirst({
+          where: {
+            clienteId,
+            status: {
+            not: "CANCELADO",
+            },  
+              data: {
+              gte: inicioSugestao,
+              lte: fimSugestao,
+    },
+  },
+  orderBy: {
+    data: "asc",
+  },
+});
 
   const agendamento = await prisma.agendamento.create({
     data: {
       clienteId,
-      data: new Date(data),
+      data: dataAgendamento,
       servicos: {
         create: servicoIds.map((servicoId) => ({
           servicoId,
@@ -141,12 +239,78 @@ app.post("/agendamentos", async (request, reply) => {
     },
   });
 
-  return reply.status(201).send(agendamento);
+  return reply.status(201).send({
+    agendamento,
+    sugestao: agendamentoNaMesmaSemana
+      ? {
+          message:
+            "Existe outro agendamento deste cliente na mesma semana. Considere manter uma data próxima.",
+          dataSugerida: agendamentoNaMesmaSemana.data,
+        }
+      : null,
+  });
 });
 
 // Listar agendamentos
 app.get("/agendamentos", async () => {
   return prisma.agendamento.findMany({
+    orderBy: {
+      data: "asc",
+    },
+    include: {
+      cliente: true,
+      servicos: {
+        include: {
+          servico: true,
+        },
+      },
+    },
+  });
+});
+
+app.get("/dashboard", async () => {
+  const total = await prisma.agendamento.count();
+
+  const confirmados = await prisma.agendamento.count({
+    where: { status: "CONFIRMADO" },
+  });
+
+  const cancelados = await prisma.agendamento.count({
+    where: { status: "CANCELADO" },
+  });
+
+  const pendentes = await prisma.agendamento.count({
+    where: { status: "PENDENTE" },
+  });
+
+  return {
+    total,
+    confirmados,
+    cancelados,
+    pendentes,
+  };
+});
+
+// Filtrar agendamentos por período
+app.get("/agendamentos/filtro", async (request, reply) => {
+  const { dataInicio, dataFim } = request.query as {
+    dataInicio?: string;
+    dataFim?: string;
+  };
+
+  if (!dataInicio || !dataFim) {
+    return reply.status(400).send({
+      message: "Informe dataInicio e dataFim",
+    });
+  }
+
+  return prisma.agendamento.findMany({
+    where: {
+      data: {
+        gte: new Date(`${dataInicio}T00:00:00.000Z`),
+        lte: new Date(`${dataFim}T23:59:59.999Z`),
+      },
+    },
     orderBy: {
       data: "asc",
     },
@@ -189,10 +353,30 @@ app.put("/agendamentos/:id", async (request, reply) => {
     });
   }
 
+  const novaData = new Date(data);
+
+  const conflito = await prisma.agendamento.findFirst({
+    where: {
+      id: {
+        not: id,
+      },
+      data: novaData,
+      status: {
+        not: "CANCELADO",
+      },
+    },
+  });
+
+  if (conflito) {
+    return reply.status(400).send({
+      message: "Já existe outro agendamento nesse horário",
+    });
+  }
+
   const agendamentoAtualizado = await prisma.agendamento.update({
     where: { id },
     data: {
-      data: new Date(data),
+      data: novaData,
     },
     include: {
       cliente: true,
@@ -252,28 +436,30 @@ app.patch("/agendamentos/:id/cancelar", async (request, reply) => {
   return agendamentoCancelado;
 });
 
-const port = Number(process.env.PORT) || 3333;
+// Confirmar agendamento
+app.patch("/agendamentos/:id/confirmar", async (request, reply) => {
+  const { id } = request.params as { id: string };
 
-app.listen({ port, host: "0.0.0.0" }).then(() => {
-  console.log(`Servidor rodando na porta ${port}`);
-});
+  const agendamento = await prisma.agendamento.findUnique({
+    where: { id },
+  });
 
-// Filtrar agendamentos por período
-app.get("/agendamentos/filtro", async (request) => {
-  const { dataInicio, dataFim } = request.query as {
-    dataInicio: string;
-    dataFim: string;
-  };
+  if (!agendamento) {
+    return reply.status(404).send({
+      message: "Agendamento não encontrado",
+    });
+  }
 
-  return prisma.agendamento.findMany({
-    where: {
-      data: {
-        gte: new Date(dataInicio),
-        lte: new Date(dataFim),
-      },
-    },
-    orderBy: {
-      data: "asc",
+  if (agendamento.status === "CANCELADO") {
+    return reply.status(400).send({
+      message: "Não é possível confirmar um agendamento cancelado",
+    });
+  }
+
+  const agendamentoConfirmado = await prisma.agendamento.update({
+    where: { id },
+    data: {
+      status: "CONFIRMADO",
     },
     include: {
       cliente: true,
@@ -284,4 +470,12 @@ app.get("/agendamentos/filtro", async (request) => {
       },
     },
   });
+
+  return agendamentoConfirmado;
+});
+
+const port = Number(process.env.PORT) || 3333;
+
+app.listen({ port, host: "0.0.0.0" }).then(() => {
+  console.log(`Servidor rodando na porta ${port}`);
 });
