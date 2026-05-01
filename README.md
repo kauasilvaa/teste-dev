@@ -114,7 +114,7 @@ npx prisma migrate reset
 
 ## 🎥 Vídeo de demonstração
 
-Adicione aqui o link do vídeo mostrando o sistema em funcionamento.
+(https://youtu.be/-QFmm5DSkKg)
 
 ---
 
