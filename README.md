@@ -1,4 +1,4 @@
-# 💇‍♀️ Sistema de Agendamento - Salão de Beleza
+#  Sistema de Agendamento - Salão de Beleza
 
 Projeto desenvolvido como teste técnico para vaga de desenvolvedor, simulando um sistema real de gestão de um salão de beleza.
 
