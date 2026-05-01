@@ -69,6 +69,7 @@ Projeto desenvolvido como teste técnico para vaga de desenvolvedor, simulando u
 
 cd backend  
 npm install  
+npx prisma migrate dev  
 npm run dev  
 
 Servidor:  
@@ -87,15 +88,21 @@ http://localhost:3000
 
 ---
 
+## ⚙️ Variáveis de ambiente
+
+Crie um arquivo `.env` dentro da pasta `backend` com o seguinte conteúdo:
+
+DATABASE_URL="COLE_SUA_URL_DO_NEON_AQUI"  
+PORT=3333  
+
+Para obter a DATABASE_URL, crie um banco gratuito em:  
+https://neon.tech/
+
+---
+
 ## 🗄️ Banco de dados
 
-Banco PostgreSQL hospedado no Neon.
-
-Para sincronizar o banco:
-
-npx prisma migrate dev  
-
-Para resetar o banco:
+Para resetar o banco, utilize:
 
 npx prisma migrate reset  
 
@@ -103,18 +110,18 @@ npx prisma migrate reset
 
 ## 📸 Prints do sistema
 
-![Dashboard](docs/prints/dashboard.png)
-![Cadastro de cliente](docs/prints/cliente.png)
-![Criação de agendamento](docs/prints/agendamento.png)
-![Lista de agendamentos](docs/prints/lista.png)
-![Filtro por período](docs/prints/filtro.png)
-![Sugestão automática](docs/prints/sugestao.png)
+![Dashboard](docs/prints/dashboard.png)  
+![Cadastro de cliente](docs/prints/cliente.png)  
+![Criação de agendamento](docs/prints/agendamento.png)  
+![Lista de agendamentos](docs/prints/lista.png)  
+![Filtro por período](docs/prints/filtro.png)  
+![Sugestão automática](docs/prints/sugestao.png)  
 
 ---
 
 ## 🎥 Vídeo de demonstração
 
-(https://youtu.be/-QFmm5DSkKg)
+https://youtu.be/-QFmm5DSkKg
 
 ---
 
